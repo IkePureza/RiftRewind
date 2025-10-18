@@ -1,0 +1,83 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Rift Rewind - League of Legends Recap Generator
+
+Parameters:
+  AmplifyDomain:
+    Type: String
+    Default: 'https://main.d6pa54tf54cr.amplifyapp.com'
+    Description: Your Amplify app domain for CORS (update after deployment)
+    
+  RiotApiKeyParameter:
+    Type: String
+    Default: '/rift-rewind/riot-api-key'
+    Description: SSM Parameter Store path for Riot API key
+
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+    Architectures:
+      - x86_64
+
+Resources:
+  # IAM Role for Lambda functions
+  RiftRewindLambdaRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: SSMParameterAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ssm:GetParameter
+                Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RiotApiKeyParameter}'
+      Tags:
+        - Key: Project
+          Value: rift-rewind
+
+  # Test Lambda Function with Function URL
+  TestRiotApiFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: test-riot-api
+      CodeUri: lambda/test-riot-api/
+      Handler: lambda_function.lambda_handler
+      Description: Test Riot API connectivity and data retrieval
+      Role: !GetAtt RiftRewindLambdaRole.Arn
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - !Ref AmplifyDomain
+          AllowHeaders:
+            - Content-Type
+          AllowMethods:
+            - POST
+          MaxAge: 300
+      Tags:
+        Project: rift-rewind
+        Environment: dev
+
+Outputs:
+  FunctionUrl:
+    Description: Function URL endpoint for test-riot-api
+    Value: !GetAtt TestRiotApiFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-FunctionUrl'
+  
+  AmplifyDomainUsed:
+    Description: Amplify domain configured in CORS
+    Value: !Ref AmplifyDomain

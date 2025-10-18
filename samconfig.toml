@@ -1,0 +1,19 @@
+version = 0.1
+
+[default]
+[default.global.parameters]
+stack_name = "rift-rewind"
+region = "us-east-1"
+
+[default.deploy.parameters]
+capabilities = "CAPABILITY_NAMED_IAM"
+confirm_changeset = true
+resolve_s3 = true
+region = "us-east-1"
+parameter_overrides = "RiotApiKeyParameterName=\"/rift-rewind/riot-api-key\""
+s3_prefix = "rift-rewind"
+image_repositories = []
+
+[default.build.parameters]
+cached = true
+parallel = true
