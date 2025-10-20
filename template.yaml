@@ -61,7 +61,7 @@ Resources:
         AuthType: NONE
         Cors:
           AllowOrigins:
-            - !Ref AmplifyDomain
+            - '*'  # Allow everything for quick iteration
           AllowHeaders:
             - Content-Type
           AllowMethods:
