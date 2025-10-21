@@ -84,6 +84,14 @@ Resources:
                 Resource:
                   - !GetAtt MatchDataBucket.Arn
                   - !Sub '${MatchDataBucket.Arn}/*'
+        - PolicyName: BedrockAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - bedrock:InvokeModel
+                Resource: '*'
       Tags:
         - Key: Project
           Value: rift-rewind
@@ -115,12 +123,77 @@ Resources:
         Project: rift-rewind
         Environment: dev
 
+  # Process Matches Lambda Function with Function URL
+  ProcessMatchesFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: process-matches
+      CodeUri: lambda/process-matches/
+      Handler: lambda_function.lambda_handler
+      Description: Process raw match data into clean stats CSV
+      Role: !GetAtt RiftRewindLambdaRole.Arn
+      Environment:
+        Variables:
+          MATCH_DATA_BUCKET: !Ref MatchDataBucket
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'  # Allow everything for quick iteration
+          AllowHeaders:
+            - Content-Type
+          AllowMethods:
+            - POST
+          MaxAge: 300
+      Tags:
+        Project: rift-rewind
+        Environment: dev
+
+  # Query RAG Lambda Function with Function URL
+  QueryRAGFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: query-rag
+      CodeUri: lambda/query-rag/
+      Handler: lambda_function.lambda_handler
+      Description: Query match data using Amazon Bedrock RAG
+      Role: !GetAtt RiftRewindLambdaRole.Arn
+      Timeout: 60
+      Environment:
+        Variables:
+          MATCH_DATA_BUCKET: !Ref MatchDataBucket
+      FunctionUrlConfig:
+        AuthType: NONE
+        Cors:
+          AllowOrigins:
+            - '*'  # Allow everything for quick iteration
+          AllowHeaders:
+            - Content-Type
+          AllowMethods:
+            - POST
+          MaxAge: 300
+      Tags:
+        Project: rift-rewind
+        Environment: dev
+
 Outputs:
   FunctionUrl:
     Description: Function URL endpoint for test-riot-api
     Value: !GetAtt TestRiotApiFunctionUrl.FunctionUrl
     Export:
       Name: !Sub '${AWS::StackName}-FunctionUrl'
+
+  ProcessMatchesFunctionUrl:
+    Description: Function URL endpoint for process-matches
+    Value: !GetAtt ProcessMatchesFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-ProcessMatchesFunctionUrl'
+
+  QueryRAGFunctionUrl:
+    Description: Function URL endpoint for query-rag (Bedrock RAG)
+    Value: !GetAtt QueryRAGFunctionUrl.FunctionUrl
+    Export:
+      Name: !Sub '${AWS::StackName}-QueryRAGFunctionUrl'
 
   MatchDataBucketName:
     Description: S3 bucket name for storing match data
