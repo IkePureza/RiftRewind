@@ -66,9 +66,11 @@ def lambda_handler(event, context):
         game_name = quote(game_name)
         tag_line = quote(tag_line)
 
-        # Get routing value for this region
-        routing_value = get_routing_value(region)
-        account_url = f"https://{routing_value}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
+        # Get routing values for this region
+        account_routing = get_account_routing(region)
+        match_routing = get_match_routing(region)
+
+        account_url = f"https://{account_routing}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
         
         print(f"🔗 Account API URL: {account_url}")
         
@@ -151,7 +153,7 @@ def lambda_handler(event, context):
         print(f"💾 Saved profile to S3: {profile_key}")
 
         # Step 3: Get match list
-        match_list_url = f"https://{routing_value}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count={match_count}"
+        match_list_url = f"https://{match_routing}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count={match_count}"
 
         print(f"🔗 Match list URL: {match_list_url}")
         match_list_response = http.request('GET', match_list_url, headers=headers)
@@ -182,7 +184,7 @@ def lambda_handler(event, context):
             print(f"🎮 Processing match {i+1}/{len(match_ids)}: {match_id}")
 
             # Get full match data
-            match_url = f"https://{routing_value}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+            match_url = f"https://{match_routing}.api.riotgames.com/lol/match/v5/matches/{match_id}"
             match_response = http.request('GET', match_url, headers=headers)
 
             if match_response.status != 200:
@@ -309,20 +311,42 @@ def extract_player_stats(match_data, puuid):
         print(f"❌ Error extracting player stats: {str(e)}")
         return None
 
-def get_routing_value(region):
-    """Map platform region to routing value for Riot API"""
+def get_account_routing(region):
+    """Map platform region to routing value for Account API (Riot ID lookup)"""
     routing_map = {
         'na1': 'americas',
         'br1': 'americas',
         'la1': 'americas',
         'la2': 'americas',
+        'oc1': 'americas',  # OC1 uses americas for account API
         'euw1': 'europe',
         'eun1': 'europe',
         'tr1': 'europe',
         'ru': 'europe',
         'kr': 'asia',
         'jp1': 'asia',
-        'oc1': 'sea',
+        'ph2': 'sea',
+        'sg2': 'sea',
+        'th2': 'sea',
+        'tw2': 'sea',
+        'vn2': 'sea'
+    }
+    return routing_map.get(region, 'americas')
+
+def get_match_routing(region):
+    """Map platform region to routing value for Match API (match history)"""
+    routing_map = {
+        'na1': 'americas',
+        'br1': 'americas',
+        'la1': 'americas',
+        'la2': 'americas',
+        'oc1': 'sea',  # OC1 uses sea for match API
+        'euw1': 'europe',
+        'eun1': 'europe',
+        'tr1': 'europe',
+        'ru': 'europe',
+        'kr': 'asia',
+        'jp1': 'asia',
         'ph2': 'sea',
         'sg2': 'sea',
         'th2': 'sea',
