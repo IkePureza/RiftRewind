@@ -2,17 +2,25 @@ import json
 import boto3
 import urllib3
 from urllib.parse import quote
+from datetime import datetime
+import os
 
 def lambda_handler(event, context):
     """
-    Fetches champion mastery data for a summoner using Riot ID.
-    Expected input: {"summonerName": "GameName#TAG", "region": "oc1"}
+    Fetches League of Legends match history for a summoner using Riot ID.
+    Stores data in S3 with organized folder structure.
+    Expected input: {"summonerName": "GameName#TAG", "region": "oc1", "count": 5}
     """
     try:
+        # Get configuration from environment variables
+        bucket_name = os.environ.get('MATCH_DATA_BUCKET')
+        api_key_param = os.environ.get('RIOT_API_KEY_PARAM', '/rift-rewind/riot-api-key')
+
         # Parse the request
         body = json.loads(event['body'])
         summoner_name = body.get('summonerName', '').strip()
         region = body.get('region', 'oc1')
+        match_count = body.get('count', 5)
         
         # Validate input
         if not summoner_name:
@@ -30,27 +38,36 @@ def lambda_handler(event, context):
         
         # Get API key from Parameter Store
         ssm = boto3.client('ssm', region_name='us-east-1')
-        parameter = ssm.get_parameter(
-            Name='/rift-rewind/riot-api-key',
-            WithDecryption=True
-        )
-        api_key = parameter['Parameter']['Value']
-        
+        try:
+            parameter = ssm.get_parameter(
+                Name=api_key_param,
+                WithDecryption=True
+            )
+            api_key = parameter['Parameter']['Value']
+            print(f"✅ Retrieved API key from Parameter Store")
+        except Exception as e:
+            print(f"❌ Failed to get API key: {str(e)}")
+            return {
+                'statusCode': 500,
+                'body': json.dumps({'error': 'Failed to retrieve API key'})
+            }
+
         # Debug logging
-        print(f"✅ Retrieved API key from Parameter Store")
         print(f"🎮 Looking up: {summoner_name} in region {region}")
+        print(f"📊 Fetching {match_count} matches")
         
-        # Initialize HTTP client
+        # Initialize HTTP client and S3
         http = urllib3.PoolManager()
+        s3 = boto3.client('s3')
         headers = {'X-Riot-Token': api_key}
-        
+
         # Step 1: Get account PUUID using Riot ID
         game_name, tag_line = summoner_name.split('#', 1)
         game_name = quote(game_name)
         tag_line = quote(tag_line)
-        
-        # Use americas routing for now (most reliable)
-        routing_value = 'americas'
+
+        # Get routing value for this region
+        routing_value = get_routing_value(region)
         account_url = f"https://{routing_value}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/{game_name}/{tag_line}"
         
         print(f"🔗 Account API URL: {account_url}")
@@ -110,32 +127,114 @@ def lambda_handler(event, context):
             }
         
         summoner_data = json.loads(summoner_response.data.decode('utf-8'))
-        
+        full_summoner_name = f"{account_data['gameName']}#{account_data['tagLine']}"
+
         print(f"✅ Got summoner level: {summoner_data['summonerLevel']}")
-        
-        # Step 3: Get champion mastery data
-        mastery_url = f"https://{region}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/{puuid}/top?count=3"
-        mastery_response = http.request('GET', mastery_url, headers=headers)
-        
-        mastery_data = []
-        if mastery_response.status == 200:
-            mastery_data = json.loads(mastery_response.data.decode('utf-8'))
-            print(f"✅ Got {len(mastery_data)} champion masteries")
-        else:
-            print(f"⚠️  No mastery data (status {mastery_response.status})")
-        
+
+        # Save profile data to S3
+        profile_data = {
+            'puuid': puuid,
+            'gameName': account_data['gameName'],
+            'tagLine': account_data['tagLine'],
+            'summonerLevel': summoner_data['summonerLevel'],
+            'region': region,
+            'lastUpdated': datetime.now().isoformat()
+        }
+
+        profile_key = f"users/{puuid}/profile.json"
+        s3.put_object(
+            Bucket=bucket_name,
+            Key=profile_key,
+            Body=json.dumps(profile_data, indent=2),
+            ContentType='application/json'
+        )
+        print(f"💾 Saved profile to S3: {profile_key}")
+
+        # Step 3: Get match list
+        match_list_url = f"https://{routing_value}.api.riotgames.com/lol/match/v5/matches/by-puuid/{puuid}/ids?start=0&count={match_count}"
+
+        print(f"🔗 Match list URL: {match_list_url}")
+        match_list_response = http.request('GET', match_list_url, headers=headers)
+
+        if match_list_response.status != 200:
+            print(f"⚠️  Failed to fetch match list: {match_list_response.status}")
+            return {
+                'statusCode': match_list_response.status,
+                'body': json.dumps({
+                    'error': f'Failed to fetch match list: {match_list_response.status}'
+                })
+            }
+
+        match_ids = json.loads(match_list_response.data.decode('utf-8'))
+
+        if not match_ids:
+            return {
+                'statusCode': 404,
+                'body': json.dumps({'error': 'No matches found for this summoner'})
+            }
+
+        print(f"✅ Found {len(match_ids)} matches")
+
+        # Step 4: Fetch and process each match
+        processed_matches = []
+
+        for i, match_id in enumerate(match_ids):
+            print(f"🎮 Processing match {i+1}/{len(match_ids)}: {match_id}")
+
+            # Get full match data
+            match_url = f"https://{routing_value}.api.riotgames.com/lol/match/v5/matches/{match_id}"
+            match_response = http.request('GET', match_url, headers=headers)
+
+            if match_response.status != 200:
+                print(f"⚠️  Failed to fetch match {match_id}: {match_response.status}")
+                continue
+
+            match_data = json.loads(match_response.data.decode('utf-8'))
+
+            # Save full match data to S3
+            match_key = f"users/{puuid}/matches/{match_id}.json"
+            s3.put_object(
+                Bucket=bucket_name,
+                Key=match_key,
+                Body=json.dumps(match_data, indent=2),
+                ContentType='application/json'
+            )
+
+            # Extract player stats
+            player_stats = extract_player_stats(match_data, puuid)
+            if player_stats:
+                processed_matches.append({
+                    'matchId': match_id,
+                    'champion': player_stats.get('championName'),
+                    'championId': player_stats.get('championId'),
+                    'role': player_stats.get('teamPosition', 'UNKNOWN'),
+                    'kills': player_stats.get('kills', 0),
+                    'deaths': player_stats.get('deaths', 0),
+                    'assists': player_stats.get('assists', 0),
+                    'kda': f"{player_stats.get('kills', 0)}/{player_stats.get('deaths', 0)}/{player_stats.get('assists', 0)}",
+                    'win': player_stats.get('win'),
+                    'gameMode': player_stats.get('gameMode'),
+                    'gameDuration': player_stats.get('gameDuration'),
+                    'cs': player_stats.get('totalMinionsKilled', 0) + player_stats.get('neutralMinionsKilled', 0),
+                    's3Key': match_key
+                })
+                print(f"  ✅ {player_stats.get('championName')} - {'Win' if player_stats.get('win') else 'Loss'}")
+
         # Format response
         response_data = {
             'summoner': {
-                'name': account_data['gameName'] + '#' + account_data['tagLine'],
+                'name': full_summoner_name,
                 'level': summoner_data['summonerLevel'],
-                'puuid': puuid
+                'puuid': puuid,
+                'profileS3Key': profile_key
             },
-            'topChampions': mastery_data[:3]
+            'matchesProcessed': len(processed_matches),
+            'matches': processed_matches,
+            'region': region
         }
-        
-        print(f"🎉 Success! Returning data for {response_data['summoner']['name']}")
-        
+
+        print(f"🎉 Success! Processed {len(processed_matches)} matches for {full_summoner_name}")
+
         return {
             'statusCode': 200,
             'body': json.dumps(response_data)
@@ -149,3 +248,85 @@ def lambda_handler(event, context):
             'statusCode': 500,
             'body': json.dumps({'error': 'Internal server error', 'detail': str(e)})
         }
+
+def extract_player_stats(match_data, puuid):
+    """Extract relevant player statistics from match data"""
+    try:
+        # Find the participant data for our player
+        participants = match_data['info']['participants']
+        player_data = None
+
+        for participant in participants:
+            if participant['puuid'] == puuid:
+                player_data = participant
+                break
+
+        if not player_data:
+            return None
+
+        # Extract key statistics
+        stats = {
+            'matchId': match_data['metadata']['matchId'],
+            'gameCreation': match_data['info']['gameCreation'],
+            'gameDuration': match_data['info']['gameDuration'],
+            'gameMode': match_data['info']['gameMode'],
+            'queueId': match_data['info']['queueId'],
+            'championName': player_data['championName'],
+            'championId': player_data['championId'],
+            'teamPosition': player_data['teamPosition'],
+            'individualPosition': player_data['individualPosition'],
+            'kills': player_data['kills'],
+            'deaths': player_data['deaths'],
+            'assists': player_data['assists'],
+            'totalMinionsKilled': player_data['totalMinionsKilled'],
+            'neutralMinionsKilled': player_data['neutralMinionsKilled'],
+            'goldEarned': player_data['goldEarned'],
+            'totalDamageDealtToChampions': player_data['totalDamageDealtToChampions'],
+            'totalDamageTaken': player_data['totalDamageTaken'],
+            'visionScore': player_data['visionScore'],
+            'win': player_data['win'],
+            'items': [
+                player_data['item0'],
+                player_data['item1'],
+                player_data['item2'],
+                player_data['item3'],
+                player_data['item4'],
+                player_data['item5'],
+                player_data['item6']  # trinket
+            ],
+            'summoner1Id': player_data['summoner1Id'],
+            'summoner2Id': player_data['summoner2Id'],
+            'perks': {
+                'primaryStyle': player_data['perks']['styles'][0]['style'],
+                'subStyle': player_data['perks']['styles'][1]['style'],
+                'primaryPerk': player_data['perks']['styles'][0]['selections'][0]['perk']
+            }
+        }
+
+        return stats
+
+    except Exception as e:
+        print(f"❌ Error extracting player stats: {str(e)}")
+        return None
+
+def get_routing_value(region):
+    """Map platform region to routing value for Riot API"""
+    routing_map = {
+        'na1': 'americas',
+        'br1': 'americas',
+        'la1': 'americas',
+        'la2': 'americas',
+        'euw1': 'europe',
+        'eun1': 'europe',
+        'tr1': 'europe',
+        'ru': 'europe',
+        'kr': 'asia',
+        'jp1': 'asia',
+        'oc1': 'sea',
+        'ph2': 'sea',
+        'sg2': 'sea',
+        'th2': 'sea',
+        'tw2': 'sea',
+        'vn2': 'sea'
+    }
+    return routing_map.get(region, 'americas')

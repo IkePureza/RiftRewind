@@ -22,6 +22,33 @@ Globals:
       - x86_64
 
 Resources:
+  # S3 Bucket for storing match data
+  MatchDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'rift-rewind-match-data-${AWS::AccountId}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: AES256
+      LifecycleConfiguration:
+        Rules:
+          - Id: DeleteOldVersions
+            Status: Enabled
+            NoncurrentVersionExpirationInDays: 30
+      Tags:
+        - Key: Project
+          Value: rift-rewind
+        - Key: Purpose
+          Value: match-data-storage
+
   # IAM Role for Lambda functions
   RiftRewindLambdaRole:
     Type: AWS::IAM::Role
@@ -44,6 +71,19 @@ Resources:
                 Action:
                   - ssm:GetParameter
                 Resource: !Sub 'arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${RiotApiKeyParameter}'
+        - PolicyName: S3MatchDataAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt MatchDataBucket.Arn
+                  - !Sub '${MatchDataBucket.Arn}/*'
       Tags:
         - Key: Project
           Value: rift-rewind
@@ -57,6 +97,10 @@ Resources:
       Handler: lambda_function.lambda_handler
       Description: Test Riot API connectivity and data retrieval
       Role: !GetAtt RiftRewindLambdaRole.Arn
+      Environment:
+        Variables:
+          MATCH_DATA_BUCKET: !Ref MatchDataBucket
+          RIOT_API_KEY_PARAM: !Ref RiotApiKeyParameter
       FunctionUrlConfig:
         AuthType: NONE
         Cors:
@@ -77,7 +121,13 @@ Outputs:
     Value: !GetAtt TestRiotApiFunctionUrl.FunctionUrl
     Export:
       Name: !Sub '${AWS::StackName}-FunctionUrl'
-  
+
+  MatchDataBucketName:
+    Description: S3 bucket name for storing match data
+    Value: !Ref MatchDataBucket
+    Export:
+      Name: !Sub '${AWS::StackName}-MatchDataBucket'
+
   AmplifyDomainUsed:
     Description: Amplify domain configured in CORS
     Value: !Ref AmplifyDomain

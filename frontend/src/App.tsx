@@ -12,18 +12,32 @@ import {
 } from '@/components/ui/select'
 import { Loader2 } from 'lucide-react'
 
+interface MatchData {
+  matchId: string
+  champion: string
+  championId: number
+  role: string
+  kills: number
+  deaths: number
+  assists: number
+  kda: string
+  win: boolean
+  gameMode: string
+  gameDuration: number
+  cs: number
+  s3Key: string
+}
+
 interface SummonerData {
   summoner: {
     name: string
     level: number
     puuid: string
+    profileS3Key: string
   }
-  topChampions: Array<{
-    championId: number
-    championLevel: number
-    championPoints: number
-    lastPlayTime: number
-  }>
+  matchesProcessed: number
+  matches: MatchData[]
+  region: string
 }
 
 interface FetchSummonerParams {
@@ -171,39 +185,75 @@ function App() {
                 </CardContent>
               </Card>
 
-              {/* Champion Mastery Section */}
+              {/* Match History Section */}
               <Card>
                 <CardHeader className="px-6">
-                  <CardTitle className="text-xl">Champion Mastery</CardTitle>
+                  <CardTitle className="text-xl">
+                    Recent Match History ({mutation.data.matchesProcessed} matches)
+                  </CardTitle>
                 </CardHeader>
                 <CardContent className="p-6">
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {mutation.data.topChampions.map((champion, index) => (
+                  <div className="space-y-3">
+                    {mutation.data.matches.map((match) => (
                       <div
-                        key={index}
-                        className="bg-gradient-to-br from-gray-50 to-gray-100 rounded-lg p-4 border border-gray-200 hover:border-blue-400 transition-all hover:shadow-md"
+                        key={match.matchId}
+                        className={`rounded-lg p-4 border-2 transition-all hover:shadow-md ${
+                          match.win
+                            ? 'bg-blue-50 border-blue-200 hover:border-blue-400'
+                            : 'bg-red-50 border-red-200 hover:border-red-400'
+                        }`}
                       >
-                        <div className="flex justify-between items-start mb-3">
-                          <div className="flex items-center gap-2">
-                            <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                              <span className="text-white font-bold text-sm">#{index + 1}</span>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-4">
+                            {/* Champion Icon Placeholder */}
+                            <div className="w-16 h-16 bg-gradient-to-br from-purple-500 to-blue-600 rounded-lg flex items-center justify-center">
+                              <span className="text-white font-bold text-lg">
+                                {match.champion.substring(0, 2).toUpperCase()}
+                              </span>
                             </div>
+
+                            {/* Match Info */}
                             <div>
-                              <p className="text-sm text-gray-600">Champion ID</p>
-                              <p className="font-semibold text-gray-800">{champion.championId}</p>
+                              <div className="flex items-center gap-2 mb-1">
+                                <h3 className="font-bold text-lg text-gray-800">{match.champion}</h3>
+                                <span className={`px-2 py-0.5 rounded text-xs font-semibold ${
+                                  match.win
+                                    ? 'bg-blue-600 text-white'
+                                    : 'bg-red-600 text-white'
+                                }`}>
+                                  {match.win ? 'Victory' : 'Defeat'}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-3 text-sm text-gray-600">
+                                <span className="font-semibold">{match.role || 'UNKNOWN'}</span>
+                                <span>•</span>
+                                <span>{match.gameMode}</span>
+                                <span>•</span>
+                                <span>{Math.floor(match.gameDuration / 60)}m {match.gameDuration % 60}s</span>
+                              </div>
                             </div>
                           </div>
-                        </div>
-                        <div className="space-y-2">
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">Mastery Level</span>
-                            <span className="font-semibold text-blue-600">{champion.championLevel}</span>
-                          </div>
-                          <div className="flex justify-between items-center">
-                            <span className="text-sm text-gray-600">Points</span>
-                            <span className="font-semibold text-gray-800">
-                              {champion.championPoints.toLocaleString()}
-                            </span>
+
+                          {/* Stats */}
+                          <div className="flex items-center gap-6">
+                            <div className="text-center">
+                              <div className="text-2xl font-bold text-gray-800">
+                                {match.kills}/{match.deaths}/{match.assists}
+                              </div>
+                              <div className="text-xs text-gray-500">KDA</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-xl font-semibold text-gray-800">{match.cs}</div>
+                              <div className="text-xs text-gray-500">CS</div>
+                            </div>
+                            <div className="text-center">
+                              <div className="text-lg font-medium text-gray-600">
+                                {match.deaths === 0
+                                  ? 'Perfect'
+                                  : ((match.kills + match.assists) / match.deaths).toFixed(2)}
+                              </div>
+                              <div className="text-xs text-gray-500">Ratio</div>
+                            </div>
                           </div>
                         </div>
                       </div>
