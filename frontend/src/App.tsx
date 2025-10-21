@@ -101,22 +101,22 @@ function App() {
                     <SelectValue placeholder="Region" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="na1" emoji="🇺🇸">NA</SelectItem>
-                    <SelectItem value="euw1" emoji="🇪🇺">EUW</SelectItem>
-                    <SelectItem value="eun1" emoji="🌍">EUNE</SelectItem>
-                    <SelectItem value="kr" emoji="🇰🇷">KR</SelectItem>
-                    <SelectItem value="br1" emoji="🇧🇷">BR</SelectItem>
-                    <SelectItem value="la1" emoji="🌎">LAN</SelectItem>
-                    <SelectItem value="la2" emoji="🌎">LAS</SelectItem>
-                    <SelectItem value="oc1" emoji="🇦🇺">OCE</SelectItem>
-                    <SelectItem value="tr1" emoji="🇹🇷">TR</SelectItem>
-                    <SelectItem value="ru" emoji="🇷🇺">RU</SelectItem>
-                    <SelectItem value="jp1" emoji="🇯🇵">JP</SelectItem>
-                    <SelectItem value="ph2" emoji="🇵🇭">PH</SelectItem>
-                    <SelectItem value="sg2" emoji="🇸🇬">SG</SelectItem>
-                    <SelectItem value="th2" emoji="🇹🇭">TH</SelectItem>
-                    <SelectItem value="tw2" emoji="🇹🇼">TW</SelectItem>
-                    <SelectItem value="vn2" emoji="🇻🇳">VN</SelectItem>
+                    <SelectItem value="na1">🇺🇸 NA</SelectItem>
+                    <SelectItem value="euw1">🇪🇺 EUW</SelectItem>
+                    <SelectItem value="eun1">🌍 EUNE</SelectItem>
+                    <SelectItem value="kr">🇰🇷 KR</SelectItem>
+                    <SelectItem value="br1">🇧🇷 BR</SelectItem>
+                    <SelectItem value="la1">🌎 LAN</SelectItem>
+                    <SelectItem value="la2">🌎 LAS</SelectItem>
+                    <SelectItem value="oc1">🇦🇺 OCE</SelectItem>
+                    <SelectItem value="tr1">🇹🇷 TR</SelectItem>
+                    <SelectItem value="ru">🇷🇺 RU</SelectItem>
+                    <SelectItem value="jp1">🇯🇵 JP</SelectItem>
+                    <SelectItem value="ph2">🇵🇭 PH</SelectItem>
+                    <SelectItem value="sg2">🇸🇬 SG</SelectItem>
+                    <SelectItem value="th2">🇹🇭 TH</SelectItem>
+                    <SelectItem value="tw2">🇹🇼 TW</SelectItem>
+                    <SelectItem value="vn2">🇻🇳 VN</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
